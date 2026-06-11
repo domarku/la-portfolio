@@ -1,0 +1,20 @@
+{
+  "name": "la-portfolio",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "FPS-walkthrough portfolio for landscape architecture projects — retro low-fi renderer",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.170.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}
