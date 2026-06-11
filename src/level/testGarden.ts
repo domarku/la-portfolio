@@ -152,7 +152,7 @@ export function buildTestGarden(): Level {
       { id: "t13", kind: "tree", species: "birch", position: [0.5, 6.5] },
     ],
     spawn: { position: [-10, 9], heading: 20 },
-    skyColor: 0x9fb6d6,
+    skyColor: 0x86c1ee, // vivid blue horizon; the sky dome adds a deeper blue overhead
     fog: { near: 10, far: 70 },
   };
 }

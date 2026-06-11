@@ -5,6 +5,8 @@ import { buildVoxelWorld } from "./voxel";
 import { Player } from "./player";
 import { RetroPipeline } from "./retro";
 import { Automap } from "./automap";
+import { createSky } from "./sky";
+import { Clouds } from "./clouds";
 
 export type RenderMode = "continuous" | "voxel";
 
@@ -16,6 +18,7 @@ export class GardenApp {
   private readonly retro: RetroPipeline;
   readonly player: Player;
   private readonly automap: Automap;
+  private readonly clouds = new Clouds();
   private readonly clock = new THREE.Clock();
   private readonly hint: HTMLElement;
   private readonly modeLabel: HTMLElement;
@@ -38,8 +41,13 @@ export class GardenApp {
 
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.05, 250);
 
-    this.scene.add(new THREE.HemisphereLight(0xdcebff, 0x4a5a38, 1.15));
-    const sun = new THREE.DirectionalLight(0xfff2d6, 1.4);
+    // Gradient blue sky behind everything; horizon matches the fog so distance blends in.
+    this.scene.add(createSky(0x2b86d9, level.skyColor ?? 0x9fb6d6));
+    this.scene.add(this.clouds.group);
+
+    // Blue skylight from above (hemisphere) + a warm directional sun — a clear-day look.
+    this.scene.add(new THREE.HemisphereLight(0x9ec6f2, 0x55663c, 1.05));
+    const sun = new THREE.DirectionalLight(0xfff4e0, 1.5);
     sun.position.set(8, 14, 5);
     this.scene.add(sun);
 
@@ -114,6 +122,7 @@ export class GardenApp {
   /** Advance and render one frame by an explicit dt. Also used for headless stepping. */
   tick(dt: number): void {
     this.player.update(dt);
+    this.clouds.update(dt);
     this.faceBillboards();
     this.hint.style.opacity = this.player.isLocked ? "0" : "1";
     this.retro.render(this.scene, this.camera);
@@ -138,13 +147,13 @@ function buildHud(name: string): { root: HTMLElement; hint: HTMLElement; modeLab
     "position:absolute;left:50%;top:50%;transform:translate(-50%,40px);text-align:center;transition:opacity .3s;background:rgba(18,22,16,.55);padding:14px 18px;border:1px solid rgba(231,236,223,.25);";
   hint.innerHTML =
     `<div style="font-size:15px;margin-bottom:8px">${name}</div>` +
-    "<div>click to enter &middot; <b>WASD</b> move &middot; <b>mouse</b> look &middot; <b>shift</b> run</div>" +
+    "<div>click to enter &middot; <b>WASD</b> move &middot; <b>mouse</b> look &middot; <b>space</b> jump &middot; <b>shift</b> run</div>" +
     '<div style="margin-top:4px;opacity:.7"><b>M</b> doom / minecraft &middot; <b>Tab</b> plan &middot; <b>esc</b> release cursor</div>';
   root.appendChild(hint);
 
   const modeLabel = document.createElement("div");
   modeLabel.textContent = "minecraft";
-  modeLabel.style.cssText = "position:absolute;left:12px;bottom:10px;opacity:.6;";
+  modeLabel.style.cssText = "position:absolute;left:12px;top:10px;opacity:.7;";
   root.appendChild(modeLabel);
 
   return { root, hint, modeLabel };

@@ -10,18 +10,24 @@ const RUN_SPEED = 5.8;
 const PLAYER_RADIUS = 0.35;
 const LOOK_SENSITIVITY = 0.0022;
 const PITCH_LIMIT = Math.PI / 2 - 0.08;
+const JUMP_SPEED = 6.0; // m/s initial — a ~0.9 m hop
+const GRAVITY = 20; // m/s²
 
 /**
  * First-person walker: pointer-lock mouse look, WASD movement, true eye height,
  * terrain following with implicit auto-step (the ground is C0-continuous, so walking
- * up a slope or a blended terrace edge just works), subtle head-bob, and circle-vs-
- * segment collision against walls and hedges.
+ * up a slope or a blended terrace edge just works), a space-bar jump with real gravity,
+ * subtle head-bob, and circle-vs-segment collision against walls and hedges.
  */
 export class Player {
   yaw = 0;
   pitch = 0;
   private readonly pos = new THREE.Vector2(); // (x, z) on the ground plane
   private camY = EYE_HEIGHT;
+  private feetY = 0; // ground-contact height of the feet, in metres
+  private velY = 0; // vertical velocity while airborne
+  private grounded = true;
+  private jumpRequested = false;
   private bobPhase = 0;
   private readonly keys = new Set<string>();
   private locked = false;
@@ -55,7 +61,10 @@ export class Player {
     this.pos.set(spawn.position[0], spawn.position[1]);
     this.yaw = spawn.heading * DEG2RAD;
     this.pitch = 0;
-    this.camY = this.hf.sample(this.pos.x, this.pos.y) + EYE_HEIGHT;
+    this.feetY = this.hf.sample(this.pos.x, this.pos.y);
+    this.velY = 0;
+    this.grounded = true;
+    this.camY = this.feetY + EYE_HEIGHT;
     this.applyToCamera();
   }
 
@@ -76,6 +85,10 @@ export class Player {
 
   private onKeyDown = (e: KeyboardEvent) => {
     this.keys.add(e.code);
+    if (e.code === "Space") {
+      e.preventDefault();
+      if (!e.repeat) this.jumpRequested = true; // one jump per physical press
+    }
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
@@ -83,7 +96,8 @@ export class Player {
   };
 
   private moveAxis(): THREE.Vector2 {
-    // Forward = (sin yaw, −cos yaw); right = (cos yaw, sin yaw) in the (x, z) plane.
+    // Match the camera basis from rotation.set(pitch, yaw, 0, "YXZ"):
+    //   forward (−Z) = (−sin yaw, −cos yaw);  right (+X) = (cos yaw, −sin yaw), in (x, z).
     const fwd = (this.keys.has("KeyW") || this.keys.has("ArrowUp") ? 1 : 0) -
       (this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0);
     const strafe = (this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0) -
@@ -91,8 +105,8 @@ export class Player {
     const sin = Math.sin(this.yaw);
     const cos = Math.cos(this.yaw);
     const dir = new THREE.Vector2(
-      sin * fwd + cos * strafe,
-      -cos * fwd + sin * strafe,
+      -sin * fwd + cos * strafe,
+      -cos * fwd - sin * strafe,
     );
     if (dir.lengthSq() > 0) dir.normalize();
     return dir;
@@ -142,14 +156,33 @@ export class Player {
     this.pos.y = Math.max(this.bounds.minZ + m, Math.min(this.bounds.maxZ - m, this.pos.y));
     this.resolveCollisions();
 
-    // Head-bob, scaled by how fast we're actually moving.
-    if (moving) this.bobPhase += dt * speed * 1.9;
-    const bob = moving ? Math.sin(this.bobPhase * 2) * 0.045 : 0;
+    // Vertical: follow the ground when grounded, ballistic arc when airborne.
+    const groundY = this.hf.sample(this.pos.x, this.pos.y);
+    if (this.grounded) {
+      // Light smoothing so small terrain steps read as a stride rather than a snap.
+      this.feetY += (groundY - this.feetY) * Math.min(1, dt * 14);
+      if (this.jumpRequested) {
+        this.feetY = groundY;
+        this.velY = JUMP_SPEED;
+        this.grounded = false;
+      }
+    } else {
+      this.velY -= GRAVITY * dt;
+      this.feetY += this.velY * dt;
+      if (this.feetY <= groundY) {
+        this.feetY = groundY;
+        this.velY = 0;
+        this.grounded = true;
+      }
+    }
+    this.jumpRequested = false;
 
-    const targetY = this.hf.sample(this.pos.x, this.pos.y) + EYE_HEIGHT + bob;
-    // Light smoothing so small terrain steps read as a stride rather than a snap.
-    this.camY += (targetY - this.camY) * Math.min(1, dt * 14);
+    // Head-bob only while walking on the ground.
+    const bobbing = moving && this.grounded;
+    if (bobbing) this.bobPhase += dt * speed * 1.9;
+    const bob = bobbing ? Math.sin(this.bobPhase * 2) * 0.045 : 0;
 
+    this.camY = this.feetY + EYE_HEIGHT + bob;
     this.applyToCamera();
   }
 
